@@ -1,0 +1,88 @@
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+import unicodedata
+
+# Collecting list of movies genres
+
+request = requests.get('https://www.imdb.com/chart/top/?ref_=nv_mv_250')
+soup = BeautifulSoup(request.content, 'lxml')
+li = soup.find_all('li', attrs = {'class':'subnav_item_main'})
+genres = []
+for i in range (0,21):
+    genre_i = li[i].a.text
+    genres.append(genre_i)
+ 
+ 
+ 
+# Cleaning and putting data from the list of movies genres in a pattern
+
+clean_genres = [i.strip() for i in genres]
+genres = [x.lower() for x in clean_genres]
+
+
+
+# Link generator
+
+links = []
+for i in genres:
+    p = 1
+    link_1 = 'https://www.imdb.com/search/title/?title_type=feature&num_votes=25000,&genres='+str(i)+'&sort=user_rating,desc&start='+str(p)+'&ref_=adv_nxt'
+    links.append(link_1)
+    while p < 1000:
+        p = p + 50
+        link_2 = 'https://www.imdb.com/search/title/?title_type=feature&num_votes=25000,&genres='+str(i)+'&sort=user_rating,desc&start='+str(p)+'&ref_=adv_nxt'
+        links.append(link_2)
+
+
+
+#Collecting movie data: Movie Title, Release Year, Runtime, Director, Genres, Rates and Votes
+
+def clean_text(s):
+    return ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+BD = []
+for i in links:
+    request = requests.get(i)
+    soup = BeautifulSoup(request.content, 'lxml')
+    titles = soup.find_all('h3', attrs = {'class':'lister-item-header'})
+    years = soup.find_all('span', attrs = {'class':'lister-item-year text-muted unbold'})
+    runtimes = soup.find_all('span', attrs = {'class':'runtime'})
+    genres = soup.find_all('span', attrs = {'class':'genre'})
+    directors = soup.find_all('p', attrs = {'class':''})
+    rates = soup.find_all('div', attrs = {'class':'inline-block ratings-imdb-rating'})
+    votes = soup.find_all('span', text = 'Votes:')
+    movie = []
+    for i in range(0,50):
+        try:
+            title = clean_text(titles[i].a.text)
+            movie.append(title)
+        except:
+            pass
+        else:
+            year = years[i].text
+            year = year.replace("(", '').replace(")", '')
+            movie.append(year)
+            runtime = runtimes[i].text
+            movie.append(runtime)
+            director = directors[i].a.text
+            movie.append(director)
+            genre = genres[i].text
+            movie.append(genre)
+            rate = rates[i].strong.text
+            movie.append(rate)
+            movie = [i.strip() for i in movie]
+            vote = int(votes[i].find_next('span').text.replace(',' , ''))
+            movie.append(vote)
+        BD.append(movie)
+        movie = []
+        
+        
+# Generating DataFrame, Ranking first by Rate and second by Votes
+
+df = pd.DataFrame(BD, columns = ['Title','Year','Runtime','Director','Genres', 'Rate', 'Votes'])
+df = df.dropna()
+df = df.drop_duplicates(keep = 'first')
+df = df.sort_values(by = ['Rate', 'Votes'], ascending = [False, False])
+
+# Saving CSV
+df.to_csv('filmes.csv', index = False)
